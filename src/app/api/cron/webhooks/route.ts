@@ -1,9 +1,33 @@
-// app/api/cron/webhooks/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { cleanupExpiredWebhooks, renewExpiringWebhooks, verifyWebhookHealth } from '@/lib/webhooks/utils'
 
-export async function GET(req: NextRequest) {
+interface UserWithWebhooks {
+  id: string
+  email: string
+}
+
+interface HealthCheck {
+  service: string
+  healthy: boolean
+}
+
+interface PostRequestBody {
+  userId: string
+}
+
+interface MaintenanceResponse {
+  success: boolean
+  usersProcessed: number
+  healthChecks: HealthCheck[]
+}
+
+interface ManualRenewalResponse {
+  success: boolean
+  subscriptions: any[]
+}
+
+export async function GET(req: NextRequest): Promise<NextResponse<MaintenanceResponse | { error: string; details?: string }>> {
   // Verify this is being called by your cron service
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
@@ -16,8 +40,8 @@ export async function GET(req: NextRequest) {
     // 1. Clean up expired webhooks
     await cleanupExpiredWebhooks()
 
-    // 2. Get all users with active webhooks
-    const users = await prisma.user.findMany({
+    // 2. Get all users with active webhooks - with explicit typing
+    const users: UserWithWebhooks[] = await prisma.user.findMany({
       where: {
         WebhookSubscription: {
           some: {}
@@ -29,9 +53,9 @@ export async function GET(req: NextRequest) {
       }
     })
 
-    // 3. Renew expiring webhooks for each user
-    const renewalPromises = users.map(user => 
-      renewExpiringWebhooks(user.id).catch(error => {
+    // 3. Renew expiring webhooks for each user - now properly typed
+    const renewalPromises: Promise<void>[] = users.map((user: UserWithWebhooks) => 
+      renewExpiringWebhooks(user.id).catch((error: unknown) => {
         console.error(`Failed to renew webhooks for user ${user.email}:`, error)
       })
     )
@@ -39,16 +63,16 @@ export async function GET(req: NextRequest) {
     await Promise.all(renewalPromises)
 
     // 4. Verify webhook endpoints are healthy
-    const services = ['gmail', 'calendar', 'hubspot']
-    const healthChecks = await Promise.all(
-      services.map(async service => ({
+    const services: string[] = ['gmail', 'calendar', 'hubspot']
+    const healthChecks: HealthCheck[] = await Promise.all(
+      services.map(async (service: string): Promise<HealthCheck> => ({
         service,
         healthy: await verifyWebhookHealth(service)
       }))
     )
 
     // 5. Log results
-    const unhealthyServices = healthChecks.filter(check => !check.healthy)
+    const unhealthyServices: HealthCheck[] = healthChecks.filter((check: HealthCheck) => !check.healthy)
     if (unhealthyServices.length > 0) {
       console.error('Unhealthy webhook services:', unhealthyServices)
     }
@@ -69,14 +93,15 @@ export async function GET(req: NextRequest) {
 }
 
 // Optional: POST endpoint to manually trigger maintenance for a specific user
-export async function POST(req: NextRequest) {
+export async function POST(req: NextRequest): Promise<NextResponse<ManualRenewalResponse | { error: string; details?: string }>> {
   const authHeader = req.headers.get('authorization')
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    const { userId } = await req.json()
+    const body: PostRequestBody = await req.json()
+    const { userId } = body
 
     if (!userId) {
       return NextResponse.json({ error: 'userId required' }, { status: 400 })
