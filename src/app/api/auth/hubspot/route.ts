@@ -65,9 +65,9 @@ export async function GET(req: NextRequest) {
       },
     })
 
-    return NextResponse.redirect(new URL('/?hubspot=connected', req.url))
+    return NextResponse.redirect(`${process.env.APP_URL}/?hubspot=connected`)
   } catch (error) {
     console.error('HubSpot OAuth error:', error)
-    return NextResponse.redirect(new URL('/?hubspot=error', req.url))
+    return NextResponse.redirect(`${process.env.APP_URL}/?hubspot=error`)
   }
 }
