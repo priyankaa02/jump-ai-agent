@@ -5,7 +5,6 @@ import { prisma } from '@/lib/prisma'
 
 export async function DELETE(
   req: NextRequest,
-  { params }: { params: { id: string } }
 ) {
   const session = await getServerSession(authOptions)
   
@@ -15,7 +14,13 @@ export async function DELETE(
 
   try {
     const userId = session.user.id!
-    const notificationId = params.id
+    const searchParams = req.nextUrl.searchParams;
+    const notificationId = searchParams.get('id');
+
+    if (!notificationId) {
+      return NextResponse.json({ error: 'NotificationId ID is required' }, { status: 400 });
+    }
+
 
     const notification = await prisma.notification.deleteMany({
       where: {

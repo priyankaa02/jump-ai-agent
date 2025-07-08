@@ -5,7 +5,6 @@ import { prisma } from '@/lib/prisma'
 
 export async function PATCH(
   req: NextRequest,
-  context: { params: Record<string, string> }
 ) {
   const session = await getServerSession(authOptions);
   
@@ -15,8 +14,13 @@ export async function PATCH(
 
   try {
     const userId = session.user.id!;
-    const instructionId = context.params.id;
+    const searchParams = req.nextUrl.searchParams;
+    const instructionId = searchParams.get('id');
     const updates = await req.json();
+
+    if (!instructionId) {
+      return NextResponse.json({ error: 'Instruction ID is required' }, { status: 400 });
+    }
 
     const existing = await prisma.ongoingInstruction.findFirst({
       where: { id: instructionId, userId },
@@ -61,29 +65,34 @@ export async function PATCH(
 
 export async function DELETE(
   req: NextRequest,
-  context: { params: Record<string, string> }
 ) {
-  const session = await getServerSession(authOptions);
+  const session = await getServerSession(authOptions)
 
   if (!session?.user?.email) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
   try {
-    const userId = session.user.id!;
-    const instructionId = context.params.id;
+    const userId = session.user.id!
+    const searchParams = req.nextUrl.searchParams;
+    const instructionId = searchParams.get('id');
+
+    // Validate the instruction ID
+    if (!instructionId) {
+      return NextResponse.json({ error: 'Instruction ID is required' }, { status: 400 })
+    }
 
     const existing = await prisma.ongoingInstruction.findFirst({
       where: { id: instructionId, userId },
-    });
+    })
 
     if (!existing) {
-      return NextResponse.json({ error: 'Instruction not found' }, { status: 404 });
+      return NextResponse.json({ error: 'Instruction not found' }, { status: 404 })
     }
 
     await prisma.ongoingInstruction.delete({
       where: { id: instructionId },
-    });
+    })
 
     await prisma.activityLog.create({
       data: {
@@ -95,11 +104,14 @@ export async function DELETE(
           instruction: existing.instruction,
         },
       },
-    });
+    })
 
-    return NextResponse.json({ success: true });
+    return NextResponse.json({ success: true })
   } catch (error) {
-    console.error('Error deleting instruction:', error);
-    return NextResponse.json({ error: 'Failed to delete instruction' }, { status: 500 });
+    console.error('Error deleting instruction:', error)
+    return NextResponse.json(
+      { error: 'Failed to delete instruction' }, 
+      { status: 500 }
+    )
   }
 }
